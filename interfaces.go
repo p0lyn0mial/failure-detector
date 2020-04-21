@@ -86,10 +86,25 @@ func newEndpoint(size int, url *url.URL) *Endpoint {
 }
 
 func(ep *Endpoint) Add(sample *Sample) {
-	// TODO: implement me
+	size := cap(ep.data)
+	ep.position = ep.position % size
+	ep.data[ep.position] = sample
+	ep.position = ep.position + 1
 }
 
 func (ep *Endpoint) Get() []*Sample {
-	// TODO: implement me
-	return nil
+	size := cap(ep.data)
+	ret := []*Sample{}
+
+	for i := ep.position % size; i < size; i++ {
+		if ep.data[i] == nil {
+			break
+		}
+		ret = append(ret, ep.data[i])
+	}
+	for i := 0; i < ep.position%size; i++ {
+		ret = append(ret, ep.data[i])
+	}
+
+	return ret
 }
