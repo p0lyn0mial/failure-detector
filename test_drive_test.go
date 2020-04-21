@@ -17,7 +17,7 @@ func TestDriveFailureDetector(t *testing.T) {
 	for i := 0; i < 100000; i++ {
 		collectorCh <- generateRandomItem()
 	}
-	time.Sleep(10 *time.Second)
+	time.Sleep(2 *time.Second)
 }
 
 func generateRandomItem() *EndpointSample {
