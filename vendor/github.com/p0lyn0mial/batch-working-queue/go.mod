@@ -1,4 +1,4 @@
-module github.com/p0lyn0mial/batch_working_queue
+module github.com/p0lyn0mial/batch-working-queue
 
 go 1.12
 

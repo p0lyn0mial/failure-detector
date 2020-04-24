@@ -2,7 +2,7 @@
 github.com/p0lyn0mial/batch-working-queue
 # github.com/p0lyn0mial/ttl-cache v0.0.0-00010101000000-000000000000 => ../ttl-cache
 github.com/p0lyn0mial/ttl-cache
-# k8s.io/apimachinery v0.18.1
+# k8s.io/apimachinery v0.18.0
 k8s.io/apimachinery/pkg/util/clock
 k8s.io/apimachinery/pkg/util/runtime
 k8s.io/apimachinery/pkg/util/sets

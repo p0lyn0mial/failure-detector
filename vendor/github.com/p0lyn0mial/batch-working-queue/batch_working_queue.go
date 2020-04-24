@@ -6,10 +6,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-type keyFunc func(obj interface{}) string
-
 type Queue struct {
-	keyFn keyFunc
 	lock  sync.Mutex
 
 	store      map[string][]interface{}
@@ -19,19 +16,17 @@ type Queue struct {
 	q []string
 }
 
-func New(keyFn func(obj interface{}) string) *Queue {
+func New() *Queue {
 	return &Queue{
-		keyFn:      keyFn,
 		store:      map[string][]interface{}{},
 		dirty:      map[string][]interface{}{},
 		inProgress: sets.NewString(),
 	}
 }
 
-func (q *Queue) Add(item interface{}) {
+func (q *Queue) Add(key string, item interface{}) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
-	key := q.keyFn(item)
 	if q.inProgress.Has(key) {
 		q.dirty[key] = append(q.dirty[key], item)
 		return
