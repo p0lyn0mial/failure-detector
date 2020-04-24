@@ -8,6 +8,7 @@ import (
 
 type KeyFunc func(obj interface{}) string
 type NewStoreFunc func(keyFn KeyFunc, ttl time.Duration) Store
+type EvaluateFunc func(endpoint *Endpoint) bool
 
 type Store interface {
 	Add(obj interface{})
