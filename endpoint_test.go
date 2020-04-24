@@ -11,7 +11,7 @@ func TestEndpointType(t *testing.T) {
 	errToSampleFunc := func(err ...error) []*Sample {
 		ret := []*Sample{}
 		for _, e := range err {
-			ret = append(ret, &Sample{err:e})
+			ret = append(ret, &Sample{err: e})
 		}
 		return ret
 	}

@@ -9,17 +9,19 @@ import (
 )
 
 // processFunc processes a batch of items
-type processFunc func(objs []interface{})
+type processFunc func(objs []*EndpointSample)
 
 type processor struct {
-	queue BatchQueue
+	batchKey  KeyFunc
+	queue     endPointSampleBatchQueue
 	processFn processFunc
 	collectCh chan *EndpointSample
 }
 
-func newProcessor(processFn processFunc, queue BatchQueue) *processor {
+func newProcessor(batchKey KeyFunc, processFn processFunc, queue endPointSampleBatchQueue) *processor {
 	return &processor{
-		queue: queue,
+		batchKey:  batchKey,
+		queue:     queue,
 		processFn: processFn,
 		collectCh: make(chan *EndpointSample, 1000),
 	}
@@ -38,10 +40,6 @@ func (p *processor) run(ctx context.Context, workers int) {
 	<-ctx.Done()
 }
 
-func (p *processor) sync(items[]interface{}) {
-	p.processFn(items)
-}
-
 func (p *processor) worker() {
 	defer utilruntime.HandleCrash()
 	for p.processNextWorkItem() {
@@ -52,12 +50,13 @@ func (p *processor) processNextWorkItem() bool {
 	key, items := p.queue.Get()
 	defer p.queue.Done(key)
 
-	p.sync(items)
+	// sync
+	p.processFn(items)
 
 	return true
 }
 
-func (p *processor) collector(ctx context.Context) func(){
+func (p *processor) collector(ctx context.Context) func() {
 	return func() {
 		defer utilruntime.HandleCrash()
 		for {
@@ -65,7 +64,7 @@ func (p *processor) collector(ctx context.Context) func(){
 			case <-ctx.Done():
 				return
 			case item := <-p.collectCh:
-				p.queue.Add(item)
+				p.queue.Add(p.batchKey(item), item)
 			}
 		}
 	}

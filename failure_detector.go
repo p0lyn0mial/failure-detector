@@ -2,12 +2,13 @@ package failure_detector
 
 import (
 	"context"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"time"
 
 	batchqueue "github.com/p0lyn0mial/batch-working-queue"
 	ttlstore "github.com/p0lyn0mial/ttl-cache"
+
 	"k8s.io/apimachinery/pkg/util/clock"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 // failureDetector
@@ -21,15 +22,14 @@ type failureDetector struct {
 
 	processor *processor
 
-	// store holds data (in the form of a nested store) per service (namespace/service)
+	// store holds samples per service (namespace/service)
 	//
 	// it should:
 	//  - automatically removed entries (services) that exceed the configured TTL
 	//    that would allows us to remove unused/removed services
-	//  - be thread-safe
-	store Store
+	store map[string]EndpointStore
 
-	// createStoreFn a helper function for creating a nested store that actually stores endpoints per service
+	// createStoreFn a helper function for creating an endpoints store
 	//
 	// it should:
 	//  - automatically removed entries (endpoints) that exceed the configured TTL
@@ -41,82 +41,71 @@ type failureDetector struct {
 }
 
 func NewDefaultFailureDetector() *failureDetector {
-	createNewStoreFn := func(keyFn KeyFunc, ttl time.Duration) Store {
-		return ttlstore.New(keyFn, ttl, clock.RealClock{})
+	createNewStoreFn := func(ttl time.Duration) EndpointStore {
+		return newEndpointStore(ttlstore.New(ttl, clock.RealClock{}))
 	}
-	queue := batchqueue.New(EndpointSampleToServiceKeyFunction)
+	queue := newEndPointSampleBatchQueue(batchqueue.New())
 	return newFailureDetector(EndpointSampleToServiceKeyFunction, SimpleEvaluator, createNewStoreFn, queue)
 }
 
-func newFailureDetector(endpointSampleKeyKeyFn KeyFunc, policyEvaluator EvaluateFunc, createStoreFn NewStoreFunc, queue BatchQueue) *failureDetector {
+func newFailureDetector(endpointSampleKeyKeyFn KeyFunc, policyEvaluator EvaluateFunc, createStoreFn NewStoreFunc, queue endPointSampleBatchQueue) *failureDetector {
 	fd := &failureDetector{}
-	processor := newProcessor(fd.processBatch, queue)
+	processor := newProcessor(endpointSampleKeyKeyFn, fd.processBatch, queue)
 	fd.processor = processor
-	fd.store = createStoreFn(wrappedStoreKeyFunction, 120*time.Second)
+	fd.store = map[string]EndpointStore{}
 	fd.endpointSampleKeyFn = endpointSampleKeyKeyFn
 	fd.createStoreFn = createStoreFn
 	fd.policyEvaluatorFn = policyEvaluator
 	return fd
 }
 
-func (fd *failureDetector) processBatch(rawEndpointSample []interface{}) {
-	if len(rawEndpointSample) == 0 {
+func (fd *failureDetector) processBatch(endpointSamples []*EndpointSample) {
+	if len(endpointSamples) == 0 {
 		return
 	}
-	endpointSamples := convertToEndpointSample(rawEndpointSample)
 	batchKey := fd.endpointSampleKeyFn(endpointSamples[0])
-	serviceRawStore := fd.store.Get(batchKey)
-	if serviceRawStore == nil {
-		serviceRawStore = newWrappedStore(fd.createStoreFn(endpointKeyFunction, 60*time.Second), batchKey)
+	endpointsStore := fd.store[batchKey]
+	if endpointsStore == nil {
+		endpointsStore = fd.createStoreFn(60 * time.Second)
 	}
-	serviceStore := serviceRawStore.(Store)
 
 	visitedEndpointsKey := sets.NewString()
 	for _, endpointSample := range endpointSamples {
 		endpointKey, sample := convertToKeySample(endpointSample)
-		rawEndpoint := serviceStore.Get(endpointKey)
-		if rawEndpoint == nil {
+		endpoint := endpointsStore.Get(endpointKey)
+		if endpoint == nil {
 			// the max number of samples we are going to store and process per endpoint is 10 (it could be configurable)
-			rawEndpoint = newEndpoint(10, endpointSample.url)
+			endpoint = newEndpoint(10, endpointSample.url)
 		}
 		if !visitedEndpointsKey.Has(endpointKey) {
 			visitedEndpointsKey.Insert(endpointKey)
 		}
-		endpoint := rawEndpoint.(*Endpoint)
 		endpoint.Add(sample)
-		serviceStore.Add(endpoint)
+		endpointsStore.Add(endpointKeyFunction(endpoint), endpoint)
 	}
 
 	hasChanged := false
-	for _, visitedEndpointKey := range visitedEndpointsKey.UnsortedList(){
-		rawEndpoint := serviceStore.Get(visitedEndpointKey)
-		endpoint := rawEndpoint.(*Endpoint)
+	for _, visitedEndpointKey := range visitedEndpointsKey.UnsortedList() {
+		endpoint := endpointsStore.Get(visitedEndpointKey)
 		if fd.policyEvaluatorFn(endpoint) {
 			hasChanged = true
-			serviceStore.Add(endpoint)
+			endpointsStore.Add(endpointKeyFunction(endpoint), endpoint)
 		}
 	}
 
-	fd.store.Add(serviceStore)
+	fd.store[batchKey] = endpointsStore
 	if hasChanged {
 		// TODO: propagate if the status changed
 	}
 }
 
-func (fd *failureDetector) Run(ctx context.Context, workers int) {
-	fd.processor.run(ctx, workers)
+func (fd *failureDetector) Run(ctx context.Context) {
+	// if you ever change the number of workers then you need to provide a thread-safe store
+	fd.processor.run(ctx, 1)
 }
 
 func (fd *failureDetector) Collector() chan<- *EndpointSample {
 	return fd.processor.collectCh
-}
-
-func convertToEndpointSample(rawEndpointSample []interface{}) []*EndpointSample {
-	ret := make([]*EndpointSample, len(rawEndpointSample))
-	for i, r := range rawEndpointSample {
-		ret[i] = r.(*EndpointSample)
-	}
-	return ret
 }
 
 func convertToKeySample(epSample *EndpointSample) (string, *Sample) {

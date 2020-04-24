@@ -13,11 +13,11 @@ func TestDriveFailureDetector(t *testing.T) {
 	target := NewDefaultFailureDetector()
 	collectorCh := target.Collector()
 
-	go target.Run(context.TODO(), 8)
+	go target.Run(context.TODO())
 	for i := 0; i < 100000; i++ {
 		collectorCh <- generateRandomItem()
 	}
-	time.Sleep(2 *time.Second)
+	time.Sleep(2 * time.Second)
 }
 
 func generateRandomItem() *EndpointSample {
