@@ -161,6 +161,7 @@ func newWeightedEndpoint(size int, url *url.URL) *WeightedEndpointStatus {
 	ep := &WeightedEndpointStatus{}
 	ep.data = make([]*Sample, size, size)
 	ep.url = url
+	ep.weight = 1
 	return ep
 }
 

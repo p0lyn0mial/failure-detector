@@ -35,7 +35,7 @@ func NewDefaultFailureDetector() *failureDetector {
 		return newEndpointStore(ttlstore.New(ttl, clock.RealClock{}))
 	}
 	queue := newEndPointSampleBatchQueue(batchqueue.New())
-	return newFailureDetector(EndpointSampleToServiceKeyFunction, SimpleEvaluator, createNewStoreFn, queue)
+	return newFailureDetector(EndpointSampleToServiceKeyFunction, SimpleWeightedEndpointStatusEvaluator, createNewStoreFn, queue)
 }
 
 func newFailureDetector(endpointSampleKeyKeyFn KeyFunc, policyEvaluator EvaluateFunc, createStoreFn NewStoreFunc, queue endPointSampleBatchQueue) *failureDetector {
