@@ -11,29 +11,19 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 )
 
-// failureDetector
-// - exposes a channel via Collector() method that allows for collecting samples.
-// - samples are batched by the namespace/service and processed by processBatch() method
-// - processBatch() method calls out to external policy function for assessing the endpoints
+// failureDetector is receiving endpoint samples and maintains endpoint status according to logic implemented by a policy evaluator
 // - TODO: internal state is replicated to external storage (atomic.Value) for probing via XYZ() method
 type failureDetector struct {
 	// endpointSampleKeyFn maps collected sample (EndpointSample) for a service to the internal store
 	endpointSampleKeyFn KeyFunc
 
+	//processor retrieves EndpointSamples from the exposed channel and calls out to processBatch() function for processing
 	processor *processor
 
-	// store holds samples per service (namespace/service)
-	//
-	// it should:
-	//  - automatically removed entries (services) that exceed the configured TTL
-	//    that would allows us to remove unused/removed services
-	store map[string]EndpointStore
+	// store holds WeightedEndpointStatusStore (samples) per service (namespace/service)
+	store map[string]WeightedEndpointStatusStore
 
-	// createStoreFn a helper function for creating an endpoints store
-	//
-	// it should:
-	//  - automatically removed entries (endpoints) that exceed the configured TTL
-	//    that would allows us to remove unused/removed endpoints per service
+	// createStoreFn a helper function for creating the WeightedEndpointStatusStore store
 	createStoreFn NewStoreFunc
 
 	// policyEvaluatorFn an external policy function for assessing the endpoints
@@ -41,7 +31,7 @@ type failureDetector struct {
 }
 
 func NewDefaultFailureDetector() *failureDetector {
-	createNewStoreFn := func(ttl time.Duration) EndpointStore {
+	createNewStoreFn := func(ttl time.Duration) WeightedEndpointStatusStore {
 		return newEndpointStore(ttlstore.New(ttl, clock.RealClock{}))
 	}
 	queue := newEndPointSampleBatchQueue(batchqueue.New())
@@ -52,13 +42,17 @@ func newFailureDetector(endpointSampleKeyKeyFn KeyFunc, policyEvaluator Evaluate
 	fd := &failureDetector{}
 	processor := newProcessor(endpointSampleKeyKeyFn, fd.processBatch, queue)
 	fd.processor = processor
-	fd.store = map[string]EndpointStore{}
+	fd.store = map[string]WeightedEndpointStatusStore{}
 	fd.endpointSampleKeyFn = endpointSampleKeyKeyFn
 	fd.createStoreFn = createStoreFn
 	fd.policyEvaluatorFn = policyEvaluator
 	return fd
 }
 
+// processBatch starts processing the retrieved EndPointSamples
+// first samples are added to the internal store
+// then it calls out to external policy function for assessing
+// finally it propagates the changes to external read-only store
 func (fd *failureDetector) processBatch(endpointSamples []*EndpointSample) {
 	if len(endpointSamples) == 0 {
 		return
@@ -75,7 +69,7 @@ func (fd *failureDetector) processBatch(endpointSamples []*EndpointSample) {
 		endpoint := endpointsStore.Get(endpointKey)
 		if endpoint == nil {
 			// the max number of samples we are going to store and process per endpoint is 10 (it could be configurable)
-			endpoint = newEndpoint(10, endpointSample.url)
+			endpoint = newWeightedEndpoint(10, endpointSample.url)
 		}
 		if !visitedEndpointsKey.Has(endpointKey) {
 			visitedEndpointsKey.Insert(endpointKey)
@@ -104,6 +98,7 @@ func (fd *failureDetector) Run(ctx context.Context) {
 	fd.processor.run(ctx, 1)
 }
 
+// Collector exposes a chan for collecting EndpointSamples
 func (fd *failureDetector) Collector() chan<- *EndpointSample {
 	return fd.processor.collectCh
 }

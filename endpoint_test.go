@@ -75,7 +75,7 @@ func TestEndpointType(t *testing.T) {
 	for _, scenario := range scenarios {
 		t.Run(scenario.name, func(t *testing.T) {
 
-			target := newEndpoint(scenario.size, nil)
+			target := newWeightedEndpoint(scenario.size, nil)
 			for i := 0; i < scenario.itemsToAdd; i++ {
 				target.Add(errToSampleFunc(fmt.Errorf("%d", i))[0])
 			}

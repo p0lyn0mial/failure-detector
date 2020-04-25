@@ -8,25 +8,30 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
-// processFunc processes a batch of items
+// processFunc a function that processes a batch of EndpointSamples
 type processFunc func(objs []*EndpointSample)
 
+// processor retrieves EndpointSamples from the exposed channel and calls out to processFunc for processing
 type processor struct {
-	batchKey  KeyFunc
-	queue     endPointSampleBatchQueue
-	processFn processFunc
-	collectCh chan *EndpointSample
+	batchKeyFn KeyFunc
+	queue      endPointSampleBatchQueue
+	processFn  processFunc
+	collectCh  chan *EndpointSample
 }
 
-func newProcessor(batchKey KeyFunc, processFn processFunc, queue endPointSampleBatchQueue) *processor {
+// newProcessor creates a processor that adds EndpointSamples to the given queue under a key derived from the given batchKeyFn function and calls out to the given processFn function for processing
+func newProcessor(batchKeyFn KeyFunc, processFn processFunc, queue endPointSampleBatchQueue) *processor {
 	return &processor{
-		batchKey:  batchKey,
-		queue:     queue,
-		processFn: processFn,
-		collectCh: make(chan *EndpointSample, 1000),
+		batchKeyFn: batchKeyFn,
+		queue:      queue,
+		processFn:  processFn,
+		collectCh:  make(chan *EndpointSample, 1000),
 	}
 }
 
+// run starts the processor that
+//  - runs one worker for collecting EndpointSamples from the exposed channel and adding them to the queue
+//  - runs the given number of workers that takes the collected data off the queue and calls out to the defined processFunc
 func (p *processor) run(ctx context.Context, workers int) {
 	// TODO: shutdown the queue
 	// defer p.queue.Shutdown()
@@ -56,6 +61,7 @@ func (p *processor) processNextWorkItem() bool {
 	return true
 }
 
+// collector adds collected EndpointSamples to the internal queue for processing
 func (p *processor) collector(ctx context.Context) func() {
 	return func() {
 		defer utilruntime.HandleCrash()
@@ -63,8 +69,8 @@ func (p *processor) collector(ctx context.Context) func() {
 			select {
 			case <-ctx.Done():
 				return
-			case item := <-p.collectCh:
-				p.queue.Add(p.batchKey(item), item)
+			case endpointSample := <-p.collectCh:
+				p.queue.Add(p.batchKeyFn(endpointSample), endpointSample)
 			}
 		}
 	}
