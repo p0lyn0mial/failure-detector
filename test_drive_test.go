@@ -10,6 +10,8 @@ import (
 )
 
 func TestDriveFailureDetector(t *testing.T) {
+	rand.Seed(time.Now().UnixNano())
+
 	target := NewDefaultFailureDetector()
 	collectorCh := target.Collector()
 
@@ -18,6 +20,10 @@ func TestDriveFailureDetector(t *testing.T) {
 		collectorCh <- generateRandomItem()
 	}
 	time.Sleep(2 * time.Second)
+	generatedSample := generateRandomItem()
+
+	isHealthy, weight := target.EndpointStatus(generatedSample.Namespace, generatedSample.Service, generatedSample.URL)
+	fmt.Println(fmt.Sprintf("endpoint (%s/%s/%s) status isHealthy = %v, weight = %v", generatedSample.Namespace, generatedSample.Service, generatedSample.URL.Host, isHealthy, weight))
 }
 
 func generateRandomItem() *EndpointSample {
@@ -35,3 +41,4 @@ func generateRandomItem() *EndpointSample {
 		err,
 	}
 }
+

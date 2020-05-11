@@ -8,7 +8,7 @@ import (
 
 type KeyFunc func(obj interface{}) string
 
-// NewStoreFunc a func for creating WeightedEndpointStatus store per service
+// NewStoreFunc a func for creating WeightedEndpointStatus store per Service
 type NewStoreFunc func(ttl time.Duration) WeightedEndpointStatusStore
 
 // EvaluateFunc a function to an external policy evaluator that sets the status and weight of the given endpoint based on the collected samples.
@@ -145,13 +145,13 @@ func newEndPointSampleBatchQueue(delegate BatchQueue) endPointSampleBatchQueue {
 
 // EndpointSample represents a sample collected for an endpoint derived from a proxied request.
 // it holds:
-//  - namespace, service and url to uniquely identify the request
-//  - an optional err returned from the proxy
+//  - Namespace, Service and URL to uniquely identify the request
+//  - an optional Err returned from the proxy
 type EndpointSample struct {
-	namespace string
-	service   string
-	url       *url.URL
-	err       error
+	Namespace string
+	Service   string
+	URL       *url.URL
+	Err       error
 }
 
 // WeightedEndpointStatus represents the current status of the given endpoint based on the collected samples.
@@ -171,7 +171,7 @@ type Sample struct {
 	// TODO: store latency
 }
 
-// newWeightedEndpoint creates WeightedEndpointStatus for the given url
+// newWeightedEndpoint creates WeightedEndpointStatus for the given URL
 // it will store exactly "the size" of Samples
 func newWeightedEndpoint(size int, url *url.URL) *WeightedEndpointStatus {
 	ep := &WeightedEndpointStatus{}
@@ -209,19 +209,19 @@ func (ep *WeightedEndpointStatus) Get() []*Sample {
 }
 
 // EndpointSampleToServiceKeyFunction a function used by the batch queue and the internal store (failureDetector.store) for deriving a key from EndpointSample.
-// The key identifies a service an endpoints belongs to
+// The key identifies a Service an endpoints belongs to
 func EndpointSampleToServiceKeyFunction(obj interface{}) string {
 	item := obj.(*EndpointSample)
-	return fmt.Sprintf("%s/%s", item.namespace, item.service)
+	return fmt.Sprintf("%s/%s", item.Namespace, item.Service)
 }
 
 // EndpointSampleKeyFunction a function used for deriving a key from an EndpointSample that uniquely identifies it
 func EndpointSampleKeyFunction(obj interface{}) string {
 	item := obj.(*EndpointSample)
-	if item.url == nil {
+	if item.URL == nil {
 		return ""
 	}
-	return item.url.Host
+	return item.URL.Host
 }
 
 // endpointKeyFunction a function used for deriving a key from a WeightedEndpointStatus that uniquely identifies it
