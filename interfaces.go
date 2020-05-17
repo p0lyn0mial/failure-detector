@@ -159,6 +159,7 @@ type EndpointSample struct {
 type WeightedEndpointStatus struct {
 	data     []*Sample
 	position int
+	size     int
 
 	url    *url.URL
 	status string
@@ -178,6 +179,7 @@ func newWeightedEndpoint(size int, url *url.URL) *WeightedEndpointStatus {
 	ep.data = make([]*Sample, size, size)
 	ep.url = url
 	ep.weight = 1
+	ep.size = size
 	return ep
 }
 

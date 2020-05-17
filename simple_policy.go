@@ -8,10 +8,10 @@ package failure_detector
 // otherwise it will be set to an empty string
 //
 // WeightedEndpointStatus.Weight:
-// will be decreased by 0.1 for each encountered error for example:
+// 10 consecutive will decrease the weight by 0.01 for example:
 //  - the value of 1 means no errors
-//  - the value of 0 means it observed 10 errors
-//  - the value of 0.7 means it observed 3 errors
+//  - the value of 0 means it observed 100 errors
+//  - the value of 0.7 means it observed 30 errors
 func SimpleWeightedEndpointStatusEvaluator(endpoint *WeightedEndpointStatus) bool {
 	errThreshold := 10
 	errCount := 0
@@ -20,10 +20,42 @@ func SimpleWeightedEndpointStatusEvaluator(endpoint *WeightedEndpointStatus) boo
 		if sample != nil && sample.err != nil {
 			errCount++
 		}
+		if sample != nil && sample.err == nil {
+			errCount--
+		}
+	}
+
+	abs := func(x int) int {
+		if x < 0 {
+			return x * -1
+		}
+		return x
+	}
+
+	if abs(errCount) != errThreshold {
+		return false
+	}
+
+	prevErrCount := weightToErrorCount(endpoint.weight)
+	totalErrCount := prevErrCount + errCount
+	if totalErrCount < 0 || totalErrCount > errThreshold*10 {
+		return false
 	}
 
 	hasChanged := false
-	if errCount >= errThreshold && endpoint.status != EndpointStatusReasonTooManyErrors {
+	newWeight := 1 - 0.01*float32(totalErrCount)
+	if prevErrCount != totalErrCount {
+		endpoint.weight = newWeight
+		hasChanged = true
+	}
+
+	// reset the buffer
+	if hasChanged {
+		endpoint.data = make([]*Sample, endpoint.size, endpoint.size)
+		endpoint.position = 0
+	}
+
+	if endpoint.weight <= 0.0 && endpoint.status != EndpointStatusReasonTooManyErrors {
 		endpoint.status = EndpointStatusReasonTooManyErrors
 		hasChanged = true
 	} else if endpoint.status != "" {
@@ -31,16 +63,9 @@ func SimpleWeightedEndpointStatusEvaluator(endpoint *WeightedEndpointStatus) boo
 		hasChanged = true
 	}
 
-	newWeight := 1 - 0.1*float32(errCount)
-	prevErrCount := weightToErrorCount(endpoint.weight)
-	if prevErrCount != errCount {
-		endpoint.weight = newWeight
-		hasChanged = true
-	}
-
 	return hasChanged
 }
 
 func weightToErrorCount(weight float32) int {
-	return int((1 - weight) * 10)
+	return 100 - int(weight*100)
 }
